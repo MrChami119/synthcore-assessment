@@ -29,7 +29,7 @@ func main() {
 	// local file on the server. Locally, we fall back to the certs/ca.pem file.
 	var caCert []byte
 	if certEnv := os.Getenv("DB_CA_CERT"); certEnv != "" {
-		caCert = []byte(certEnv)
+		caCert = normalizePEM(certEnv)
 	} else {
 		fileCert, ferr := os.ReadFile("certs/ca.pem")
 		if ferr != nil {
@@ -40,7 +40,7 @@ func main() {
 
 	rootCertPool := x509.NewCertPool()
 	if ok := rootCertPool.AppendCertsFromPEM(caCert); !ok {
-		log.Fatal("failed to add CA certificate to certificate pool")
+		log.Fatal("failed to add CA certificate to certificate pool: DB_CA_CERT is set but is not valid PEM (need -----BEGIN CERTIFICATE----- with real newlines, not literal \\n)")
 	}
 
 	if err := mysql.RegisterTLSConfig("aiven", &tls.Config{
@@ -113,4 +113,54 @@ func enquiryByIDRouter(w http.ResponseWriter, r *http.Request) {
 
 	id := parts[0]
 	updateStatusHandler(w, r, id)
+}
+
+// normalizePEM makes CA certs stored in environment variables parseable.
+// Hosting dashboards often keep literal \n sequences, wrap the value in quotes,
+// or paste the PEM as a single line.
+func normalizePEM(cert string) []byte {
+	cert = strings.TrimSpace(cert)
+	if len(cert) >= 2 {
+		if (cert[0] == '"' && cert[len(cert)-1] == '"') || (cert[0] == '\'' && cert[len(cert)-1] == '\'') {
+			cert = strings.TrimSpace(cert[1 : len(cert)-1])
+		}
+	}
+
+	cert = strings.ReplaceAll(cert, `\r\n`, "\n")
+	cert = strings.ReplaceAll(cert, `\n`, "\n")
+	cert = strings.ReplaceAll(cert, "\r\n", "\n")
+
+	const begin = "-----BEGIN CERTIFICATE-----"
+	const end = "-----END CERTIFICATE-----"
+	if strings.Contains(cert, begin) && !strings.Contains(cert, "\n") {
+		var rebuilt strings.Builder
+		rest := cert
+		for {
+			start := strings.Index(rest, begin)
+			if start < 0 {
+				break
+			}
+			rest = rest[start+len(begin):]
+			endIdx := strings.Index(rest, end)
+			if endIdx < 0 {
+				break
+			}
+			body := strings.ReplaceAll(strings.TrimSpace(rest[:endIdx]), " ", "")
+			rebuilt.WriteString(begin)
+			rebuilt.WriteByte('\n')
+			rebuilt.WriteString(body)
+			rebuilt.WriteByte('\n')
+			rebuilt.WriteString(end)
+			rebuilt.WriteByte('\n')
+			rest = rest[endIdx+len(end):]
+		}
+		if rebuilt.Len() > 0 {
+			return []byte(rebuilt.String())
+		}
+	}
+
+	if !strings.HasSuffix(cert, "\n") {
+		cert += "\n"
+	}
+	return []byte(cert)
 }
