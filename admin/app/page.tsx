@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { UserButton } from "@clerk/nextjs";
+// import { UserButton } from "@clerk/nextjs";
 import StatusSelect from "./StatusSelect";
 
 type Enquiry = {
@@ -39,7 +39,7 @@ export default async function DashboardPage() {
           <h1 className="text-3xl font-semibold">Enquiries</h1>
           <p className="mt-2 text-zinc-600">{enquiries.length} total</p>
         </div>
-        <UserButton afterSignOutUrl="/sign-in" />
+        {/* <UserButton afterSignOutUrl="/sign-in" /> */}
       </div>
 
       <div className="mt-8 flex flex-col gap-4">
