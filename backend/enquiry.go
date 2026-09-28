@@ -78,6 +78,8 @@ func createEnquiryHandler(w http.ResponseWriter, r *http.Request) {
 	id, _ := result.LastInsertId()
 	input.ID = int(id)
 	input.Status = "New"
+	
+	go sendEnquiryNotification(input)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
